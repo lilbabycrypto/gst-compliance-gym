@@ -27,3 +27,7 @@ server = "gst_compliance_gym.server.app:main"
 include-package-data = true
 packages = ["gst_compliance_gym", "gst_compliance_gym.server"]
 package-dir = {"gst_compliance_gym" = ".", "gst_compliance_gym.server" = "server"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
