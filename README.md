@@ -1,3 +1,14 @@
+---
+title: GST Compliance Gym
+emoji: 🧾
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_port: 8000
+tags:
+  - openenv
+---
+
 # GST Compliance Gym
 
 An [OpenEnv](https://github.com/openenv/openenv) environment for Indian GST compliance auditing.
