@@ -15,6 +15,15 @@ app = create_app(
 )
 
 
+@app.get("/")
+def root():
+    return {
+        "name": "GST Compliance Gym",
+        "description": "OpenEnv environment for Indian GST compliance auditing",
+        "endpoints": ["/health", "/reset", "/step", "/state", "/schema", "/metadata"],
+    }
+
+
 def main():
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
