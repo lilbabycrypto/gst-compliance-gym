@@ -192,84 +192,83 @@ def main() -> None:
         "ENV_URL",
         "https://lilbabycrypto-gst-compliance-env.hf.space",
     )
-    env = GSTComplianceEnv.from_url(url=env_url)
 
     scores: Dict[str, float] = {}
 
-    for task_id in ["easy", "medium", "hard"]:
-        reward_log: List[float] = []
+    with GSTComplianceEnv(base_url=env_url).sync() as env:
+        for task_id in ["easy", "medium", "hard"]:
+            reward_log: List[float] = []
 
-        print(f"[START] task={task_id} env=gst_compliance_gym model={MODEL_NAME}", flush=True)
+            print(f"[START] task={task_id} env=gst_compliance_gym model={MODEL_NAME}", flush=True)
 
-        result = env.reset(seed=42, task_id=task_id)
-        observation = result
-        history: List[str] = []
-        last_reward: float = 0.0
-        success: bool = False
+            result = env.reset(seed=42, task_id=task_id)
+            observation = result
+            history: List[str] = []
+            last_reward: float = 0.0
+            success: bool = False
 
-        for step in range(1, MAX_STEPS + 1):
-            if observation.done:
-                success = True
-                break
+            for step in range(1, MAX_STEPS + 1):
+                if observation.done:
+                    success = True
+                    break
 
-            user_prompt = build_user_prompt(step, observation, history)
+                user_prompt = build_user_prompt(step, observation, history)
 
-            error_msg = "null"
-            try:
-                response = client.chat.completions.create(
-                    model=MODEL_NAME,
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=TEMPERATURE,
-                    max_tokens=MAX_TOKENS,
+                error_msg = "null"
+                try:
+                    response = client.chat.completions.create(
+                        model=MODEL_NAME,
+                        messages=[
+                            {"role": "system", "content": SYSTEM_PROMPT},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        temperature=TEMPERATURE,
+                        max_tokens=MAX_TOKENS,
+                    )
+                    response_text = response.choices[0].message.content or ""
+                except Exception as exc:
+                    error_msg = str(exc)
+                    response_text = FALLBACK_ACTION
+
+                parsed = parse_tool_call(response_text)
+                if parsed is None:
+                    error_msg = f"could not parse: {response_text!r}"
+                    parsed = parse_tool_call(FALLBACK_ACTION)
+
+                tool_name: str = parsed["tool_name"]  # type: ignore[index]
+                arguments: Dict[str, str] = parsed["arguments"]  # type: ignore[index]
+                action_json = json.dumps({"tool_name": tool_name, "arguments": arguments})
+
+                done_flag = False
+                try:
+                    observation = env.step(
+                        CallToolAction(tool_name=tool_name, arguments=arguments)
+                    )
+                    last_reward = observation.reward or 0.0
+                    done_flag = observation.done
+                except Exception as exc:
+                    error_msg = str(exc)
+                    done_flag = True
+
+                reward_log.append(last_reward)
+
+                print(
+                    f"[STEP] step={step} action={action_json} reward={last_reward:.2f} done={str(done_flag).lower()} error={error_msg}",
+                    flush=True,
                 )
-                response_text = response.choices[0].message.content or ""
-            except Exception as exc:
-                error_msg = str(exc)
-                response_text = FALLBACK_ACTION
 
-            # Parse tool call
-            parsed = parse_tool_call(response_text)
-            if parsed is None:
-                error_msg = f"could not parse: {response_text!r}"
-                parsed = parse_tool_call(FALLBACK_ACTION)
+                history.append(f"Step {step}: {tool_name}({arguments}) → reward={last_reward:.4f}")
 
-            tool_name: str = parsed["tool_name"]  # type: ignore[index]
-            arguments: Dict[str, str] = parsed["arguments"]  # type: ignore[index]
-            action_json = json.dumps({"tool_name": tool_name, "arguments": arguments})
+                if done_flag:
+                    success = True
+                    break
 
-            done_flag = False
-            try:
-                observation = env.step(
-                    CallToolAction(tool_name=tool_name, arguments=arguments)
-                )
-                last_reward = observation.reward
-                done_flag = observation.done
-            except Exception as exc:
-                error_msg = str(exc)
-                done_flag = True
-
-            reward_log.append(last_reward)
-
+            scores[task_id] = last_reward
+            rewards_str = ",".join(f"{r:.3f}" for r in reward_log)
             print(
-                f"[STEP] step={step} action={action_json} reward={last_reward:.2f} done={str(done_flag).lower()} error={error_msg}",
+                f"[END] success={str(success).lower()} steps={len(reward_log)} score={last_reward:.3f} rewards={rewards_str}",
                 flush=True,
             )
-
-            history.append(f"Step {step}: {tool_name}({arguments}) → reward={last_reward:.4f}")
-
-            if done_flag:
-                success = True
-                break
-
-        scores[task_id] = last_reward
-        rewards_str = ",".join(f"{r:.3f}" for r in reward_log)
-        print(
-            f"[END] success={str(success).lower()} steps={len(reward_log)} score={last_reward:.3f} rewards={rewards_str}",
-            flush=True,
-        )
 
 
 if __name__ == "__main__":
