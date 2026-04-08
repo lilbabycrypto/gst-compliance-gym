@@ -188,27 +188,33 @@ def main() -> None:
     """Run the baseline agent on all three tasks and print scores."""
     client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
-    env = GSTComplianceEnv.from_docker_image(image="gst-compliance-gym:latest")
+    env_url: str = os.environ.get(
+        "ENV_URL",
+        "https://lilbabycrypto-gst-compliance-env.hf.space",
+    )
+    env = GSTComplianceEnv.from_url(url=env_url)
 
     scores: Dict[str, float] = {}
 
     for task_id in ["easy", "medium", "hard"]:
-        print(f"\n{'='*60}")
-        print(f"Task: {task_id.upper()}")
-        print(f"{'='*60}")
+        reward_log: List[float] = []
+
+        print(f"[START] task={task_id} env=gst_compliance_gym model={MODEL_NAME}", flush=True)
 
         result = env.reset(seed=42, task_id=task_id)
         observation = result
         history: List[str] = []
         last_reward: float = 0.0
+        success: bool = False
 
         for step in range(1, MAX_STEPS + 1):
             if observation.done:
+                success = True
                 break
 
             user_prompt = build_user_prompt(step, observation, history)
 
-            # Call the LLM
+            error_msg = "null"
             try:
                 response = client.chat.completions.create(
                     model=MODEL_NAME,
@@ -221,50 +227,49 @@ def main() -> None:
                 )
                 response_text = response.choices[0].message.content or ""
             except Exception as exc:
-                print(f"  Step {step}: LLM error — {exc}")
+                error_msg = str(exc)
                 response_text = FALLBACK_ACTION
 
             # Parse tool call
             parsed = parse_tool_call(response_text)
             if parsed is None:
-                print(f"  Step {step}: could not parse tool call from: {response_text!r}")
-                # Fall back to a safe no-op tool call
+                error_msg = f"could not parse: {response_text!r}"
                 parsed = parse_tool_call(FALLBACK_ACTION)
 
             tool_name: str = parsed["tool_name"]  # type: ignore[index]
             arguments: Dict[str, str] = parsed["arguments"]  # type: ignore[index]
+            action_json = json.dumps({"tool_name": tool_name, "arguments": arguments})
 
-            print(f"  Step {step}: {tool_name}({arguments})")
-
-            # Step the environment
+            done_flag = False
             try:
                 observation = env.step(
                     CallToolAction(tool_name=tool_name, arguments=arguments)
                 )
                 last_reward = observation.reward
+                done_flag = observation.done
             except Exception as exc:
-                print(f"  Step {step}: env.step() error — {exc}")
-                break
+                error_msg = str(exc)
+                done_flag = True
 
-            # Record history
-            history_entry = f"Step {step}: {tool_name}({arguments}) → reward={last_reward:.4f}"
-            history.append(history_entry)
+            reward_log.append(last_reward)
 
-            if observation.done:
-                print(f"  Episode done at step {step}.")
+            print(
+                f"[STEP] step={step} action={action_json} reward={last_reward:.2f} done={str(done_flag).lower()} error={error_msg}",
+                flush=True,
+            )
+
+            history.append(f"Step {step}: {tool_name}({arguments}) → reward={last_reward:.4f}")
+
+            if done_flag:
+                success = True
                 break
 
         scores[task_id] = last_reward
-        print(f"Task {task_id}: score = {last_reward:.4f}")
-
-    # Summary
-    print(f"\n{'='*60}")
-    print("SUMMARY")
-    print(f"{'='*60}")
-    for task_id, score in scores.items():
-        print(f"  {task_id:<10} score = {score:.4f}")
-    total = sum(scores.values())
-    print(f"  {'TOTAL':<10} score = {total:.4f}")
+        rewards_str = ",".join(f"{r:.3f}" for r in reward_log)
+        print(
+            f"[END] success={str(success).lower()} steps={len(reward_log)} score={last_reward:.3f} rewards={rewards_str}",
+            flush=True,
+        )
 
 
 if __name__ == "__main__":

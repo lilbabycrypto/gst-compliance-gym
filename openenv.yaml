@@ -1,5 +1,7 @@
 spec_version: 1
 name: gst_compliance_gym
+version: "1.0.0"
+description: "RL benchmark where an LLM agent audits Indian GST invoices — validates GSTINs, classifies HSN codes, computes taxes, reconciles GSTR-2B records, and detects fraud through 8 deterministic MCP tools."
 type: space
 runtime: fastapi
 app: server.app:app
