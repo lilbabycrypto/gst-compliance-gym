@@ -44,7 +44,7 @@ def grade_easy(agent_flags: dict, ground_truth: dict, total_invoices: int) -> fl
 
     # Missed invalids contribute 0 — no action needed
 
-    return max(0.0, min(1.0, score / max_possible))
+    return max(0.001, min(0.999, score / max_possible))
 
 
 def grade_medium(agent_results: dict, ground_truth: dict) -> float:
@@ -68,7 +68,7 @@ def grade_medium(agent_results: dict, ground_truth: dict) -> float:
     n_invoices = len(all_inv_ids)
 
     if n_invoices == 0:
-        return 1.0 if not agent_results else 0.0
+        return 0.999 if not agent_results else 0.001
 
     total_max = 0.1 * n_invoices
     total_score = 0.0
@@ -196,4 +196,4 @@ def grade_hard(
 
     fraud_score = max(0.0, min(0.5, fraud_score))
 
-    return max(0.0, min(1.0, itc_score + fraud_score))
+    return max(0.001, min(0.999, itc_score + fraud_score))

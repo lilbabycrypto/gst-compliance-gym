@@ -372,7 +372,7 @@ class GSTComplianceEnvironment(MCPEnvironment):
             else:
                 score = 0.0
 
-            score = round(max(0.0, min(1.0, score)), 4)
+            score = round(max(0.001, min(0.999, score)), 4)
 
             env._episode_done = True
             env._step_reward = score
