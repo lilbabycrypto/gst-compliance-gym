@@ -246,6 +246,25 @@ def main() -> None:
                     )
                     last_reward = observation.reward or 0.0
                     done_flag = observation.done
+
+                    # For submit_return, extract final score from tool result JSON
+                    if tool_name == "submit_return":
+                        try:
+                            obs_inner = observation.observation if hasattr(observation, "observation") else observation
+                            result_obj = getattr(obs_inner, "result", None)
+                            if result_obj is not None:
+                                content = getattr(result_obj, "content", None)
+                                if content:
+                                    result_text = content[0].text
+                                else:
+                                    result_text = str(result_obj)
+                            else:
+                                result_text = str(obs_inner)
+                            parsed_result = json.loads(result_text)
+                            graded_score = float(parsed_result.get("score", last_reward))
+                            last_reward = max(0.001, min(0.999, graded_score))
+                        except Exception:
+                            last_reward = max(0.001, last_reward) if last_reward > 0 else 0.001
                 except Exception as exc:
                     error_msg = str(exc)
                     done_flag = True
@@ -263,10 +282,11 @@ def main() -> None:
                     success = True
                     break
 
-            scores[task_id] = last_reward
+            final_score = max(0.001, min(0.999, last_reward)) if last_reward > 0 else 0.001
+            scores[task_id] = final_score
             rewards_str = ",".join(f"{r:.3f}" for r in reward_log)
             print(
-                f"[END] success={str(success).lower()} steps={len(reward_log)} score={last_reward:.3f} rewards={rewards_str}",
+                f"[END] success={str(success).lower()} steps={len(reward_log)} score={final_score:.3f} rewards={rewards_str}",
                 flush=True,
             )
 
