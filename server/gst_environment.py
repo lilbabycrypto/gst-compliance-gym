@@ -8,12 +8,23 @@ deterministic graders to produce a final score at episode end.
 """
 
 import json
-from typing import Optional, Any
+from typing import Optional, Any, Dict
 from uuid import uuid4
 
 from fastmcp import FastMCP
 from openenv.core.env_server.mcp_environment import MCPEnvironment
 from openenv.core.env_server.types import Observation, State
+from pydantic import Field
+
+
+class GSTObservation(Observation):
+    """Extended observation that includes GST task context as real fields."""
+    task_id: Optional[str] = Field(default=None)
+    business: Optional[Dict[str, Any]] = Field(default=None)
+    invoice_count: Optional[int] = Field(default=None)
+    instructions: Optional[str] = Field(default=None)
+    step_count: Optional[int] = Field(default=None)
+    last_tool_result: Optional[Any] = Field(default=None)
 
 try:
     from .data_generator import generate_episode_data
@@ -454,21 +465,20 @@ class GSTComplianceEnvironment(MCPEnvironment):
                 "Flag suspicious invoices and submit the return."
             )
 
-        return Observation(
+        return GSTObservation(
             done=False,
             reward=0.0,
-            metadata={
-                "task_id": self._task_id,
-                "business": {
-                    "company_name": business["company_name"],
-                    "gstin": business["gstin"],
-                    "state": business["state"],
-                    "state_code": business["state_code"],
-                    "tax_period": business["tax_period"],
-                },
-                "invoice_count": len(invoices),
-                "instructions": instructions,
+            task_id=self._task_id,
+            business={
+                "company_name": business["company_name"],
+                "gstin": business["gstin"],
+                "state": business["state"],
+                "state_code": business["state_code"],
+                "tax_period": business["tax_period"],
             },
+            invoice_count=len(invoices),
+            instructions=instructions,
+            step_count=0,
         )
 
     def _step_impl(self, action, timeout_s=None, **kwargs) -> Observation:
